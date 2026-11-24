@@ -20,11 +20,11 @@ from pathlib import Path
 from bahn_pulse.openboards.client import OpenBoardsClient
 from bahn_pulse.openboards.limiter import TokenBucket
 from bahn_pulse.openboards.policy import POLICIES, TierPolicy
-from bahn_pulse.openboards.poller import Station, load_stations, poll_tier
+from bahn_pulse.openboards.poller import Station, load_stations, make_run_id, poll_tier
 from bahn_pulse.openboards.writer import BatchWriter, local_put, s3_put
 from bahn_pulse.settings import DbApiCredentials, bronze_bucket, load_dotenv
 
-TIERS_CSV = Path("config/station_tiers.csv")
+TIERS_CSV = Path(os.environ.get("STATIONS_CSV", "config/station_tiers.csv"))
 DEFAULT_RATE = 8.0  # requests per second, below the API limit of 10
 
 log = logging.getLogger("bahn_pulse.openboards")
@@ -41,10 +41,11 @@ def _put_factory(local: Path | None):
 async def run_tier_once(
     client: OpenBoardsClient, stations: list[Station], policy: TierPolicy, local: Path | None
 ) -> dict[str, int]:
-    run_id = f"tier{policy.tier}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
-    writer = BatchWriter(run_id, _put_factory(local))
+    now = datetime.now(UTC)
+    run_id = make_run_id(policy.tier, now)
+    writer = BatchWriter(run_id, _put_factory(local), max_records=100)
     try:
-        return await poll_tier(client, stations, policy, writer.add)
+        return await poll_tier(client, stations, policy, writer.add, now=now, run_id=run_id)
     finally:
         await writer.close()
 

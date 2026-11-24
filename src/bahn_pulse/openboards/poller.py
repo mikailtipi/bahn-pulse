@@ -61,6 +61,10 @@ def group_stations(stations: Sequence[Station], group_size: int) -> list[list[St
     return groups
 
 
+def make_run_id(tier: int, now: datetime) -> str:
+    return f"tier{tier}-{now.astimezone(UTC):%Y%m%dT%H%M%SZ}"
+
+
 def _iso(ts: datetime) -> str:
     return ts.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -123,7 +127,8 @@ async def poll_group(
         "duration_ms": result.duration_ms,
         "truncated_transport_types": truncated,
         "error": result.error,
-        "response": json.loads(result.body) if result.body else None,
+        # Raw response bytes, embedded verbatim by the writer (keeps memory low, stays truly raw).
+        "response": result.body,
     }
     return [record]
 
@@ -134,11 +139,13 @@ async def poll_tier(
     policy: TierPolicy,
     sink: Callable[[list[Record]], Awaitable[None]],
     *,
+    now: datetime | None = None,
+    run_id: str | None = None,
     max_in_flight: int = 16,
 ) -> dict[str, int]:
     """Poll every station of one tier (both boards). Records go to ``sink`` as they arrive."""
-    now = datetime.now(UTC)
-    run_id = f"tier{policy.tier}-{now:%Y%m%dT%H%M%SZ}"
+    now = now or datetime.now(UTC)
+    run_id = run_id or make_run_id(policy.tier, now)
     groups = group_stations([s for s in stations if s.tier == policy.tier], policy.group_size)
     semaphore = asyncio.Semaphore(max_in_flight)
     stats = {"requests": 0, "errors": 0, "truncated": 0}

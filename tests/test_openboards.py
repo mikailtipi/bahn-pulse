@@ -137,7 +137,10 @@ def test_poll_tier_splits_truncated_groups_and_keeps_raw_response() -> None:
         ("3", "4"),
         ("3", "4"),
     ]
-    assert records[0]["response"]["meta"]["consideredStopPlaces"] == records[0]["eva_numbers"]
+    assert (
+        json.loads(records[0]["response"])["meta"]["consideredStopPlaces"]
+        == (records[0]["eva_numbers"])
+    )
     assert records[0]["polled_at"].endswith("Z")
     assert len(calls) == 6  # 2 truncated + 4 split
 
@@ -208,3 +211,15 @@ def test_batch_writer_flushes_by_size_and_on_close() -> None:
 def test_to_jsonl_is_compact_utf8() -> None:
     assert to_jsonl([{"name": "Köln Hbf"}]) == '{"name":"Köln Hbf"}\n'.encode()
     assert gzip.decompress(gzip.compress(to_jsonl([{}]))) == b"{}\n"
+
+
+def test_to_jsonl_embeds_raw_response_bytes_verbatim() -> None:
+    raw = b'{"departures":[],"meta":{"x":"\xc3\xa4"}}'
+    line = to_jsonl([{"tier": 1, "response": raw}])
+    assert line == b'{"tier":1,"response":' + raw + b"}\n"
+    assert json.loads(line)["response"]["meta"]["x"] == "\u00e4"
+
+
+def test_to_jsonl_reserializes_multiline_response() -> None:
+    line = to_jsonl([{"response": b'{\n  "a": 1\n}\n'}])
+    assert line == b'{"response":{"a":1}}\n'

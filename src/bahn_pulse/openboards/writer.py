@@ -16,10 +16,30 @@ from bahn_pulse.openboards.poller import Record
 log = logging.getLogger(__name__)
 
 
+def _dumps(obj: object) -> bytes:
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode()
+
+
+def _raw_json(body: bytes) -> bytes:
+    """The API body as one JSONL-safe line; re-serialized only if it contains newlines."""
+    body = body.strip()
+    if b"\n" in body or b"\r" in body:
+        return _dumps(json.loads(body))
+    return body
+
+
 def to_jsonl(records: list[Record]) -> bytes:
-    return b"".join(
-        json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode() + b"\n" for r in records
-    )
+    """One JSON object per line. A ``bytes`` value under "response" is embedded verbatim."""
+    lines = []
+    for record in records:
+        raw = record.get("response")
+        if isinstance(raw, bytes | bytearray):
+            head = _dumps({k: v for k, v in record.items() if k != "response"})[:-1]
+            sep = b"," if head != b"{" else b""
+            lines.append(head + sep + b'"response":' + _raw_json(bytes(raw)) + b"}\n")
+        else:
+            lines.append(_dumps(record) + b"\n")
+    return b"".join(lines)
 
 
 class BatchWriter:
