@@ -1,6 +1,7 @@
 """AWS Lambda entry point: one invocation = one poll run of one tier.
 
-EventBridge Scheduler invokes the function with ``{"tier": <n>}``.
+EventBridge Scheduler invokes the function with ``{"tier": <n>}``, or
+``{"tier": <n>, "shard": <k>}`` for tiers split into shards (see ``TierPolicy.shards``).
 Environment:
     BRONZE_BUCKET           target bucket
     OPENBOARDS_RATE         requests per second for this tier (tiers share the API limit)
@@ -45,17 +46,18 @@ def _credentials() -> DbApiCredentials:
     return DbApiCredentials(client_id=values[names[0]], api_key=values[names[1]])
 
 
-async def _run(tier: int) -> dict[str, int]:
+async def _run(tier: int, shard: int | None) -> dict[str, int]:
     limiter = TokenBucket(rate=float(os.environ.get("OPENBOARDS_RATE", "2")))
     stations = load_stations(TIERS_CSV)
     async with OpenBoardsClient(_credentials(), limiter) as client:
-        return await run_tier_once(client, stations, POLICIES[tier], local=None)
+        return await run_tier_once(client, stations, POLICIES[tier], local=None, shard=shard)
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, int]:
     tier = int(event["tier"])
-    stats = asyncio.run(_run(tier))
-    log.info("tier=%d stats=%s", tier, stats)
+    shard = int(event["shard"]) if event.get("shard") is not None else None
+    stats = asyncio.run(_run(tier, shard))
+    log.info("tier=%d shard=%s stats=%s", tier, shard, stats)
     if stats["requests"] and stats["errors"] / stats["requests"] > MAX_ERROR_SHARE:
         # Fail the invocation so the Lambda Errors metric (and later an alarm) shows it.
         raise RuntimeError(f"Too many failed API calls in tier {tier}: {stats}")

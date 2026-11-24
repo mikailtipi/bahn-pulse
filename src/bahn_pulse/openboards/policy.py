@@ -18,12 +18,16 @@ class TierPolicy:
     lookback: timedelta  # window start = now - lookback
     horizon: timedelta  # window end = now + horizon (API max: start + 8h)
     group_size: int  # stations per request (API max: 15 EVA numbers)
+    # Split the tier into this many shards, each polled by its own run. A station is in shard
+    # ``eva_number % shards``. Used when one run of the whole tier would not fit one Lambda
+    # invocation (15 min max); every station is still polled once per ``interval``.
+    shards: int = 1
 
 
 POLICIES: dict[int, TierPolicy] = {
     1: TierPolicy(1, timedelta(minutes=2), timedelta(minutes=15), timedelta(minutes=120), 1),
     2: TierPolicy(2, timedelta(minutes=10), timedelta(minutes=20), timedelta(minutes=120), 3),
-    3: TierPolicy(3, timedelta(minutes=60), timedelta(minutes=60), timedelta(minutes=60), 10),
+    3: TierPolicy(3, timedelta(minutes=60), timedelta(minutes=60), timedelta(minutes=60), 10, 4),
 }
 
 BOARDS = ("departures", "arrivals")

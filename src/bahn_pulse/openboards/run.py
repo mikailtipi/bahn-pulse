@@ -39,13 +39,19 @@ def _put_factory(local: Path | None):
 
 
 async def run_tier_once(
-    client: OpenBoardsClient, stations: list[Station], policy: TierPolicy, local: Path | None
+    client: OpenBoardsClient,
+    stations: list[Station],
+    policy: TierPolicy,
+    local: Path | None,
+    shard: int | None = None,
 ) -> dict[str, int]:
     now = datetime.now(UTC)
-    run_id = make_run_id(policy.tier, now)
+    run_id = make_run_id(policy.tier, now, shard)
     writer = BatchWriter(run_id, _put_factory(local), max_records=100)
     try:
-        return await poll_tier(client, stations, policy, writer.add, now=now, run_id=run_id)
+        return await poll_tier(
+            client, stations, policy, writer.add, now=now, run_id=run_id, shard=shard
+        )
     finally:
         await writer.close()
 

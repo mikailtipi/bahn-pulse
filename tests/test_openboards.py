@@ -15,7 +15,9 @@ from bahn_pulse.openboards.poller import (
     build_payload,
     group_stations,
     load_stations,
+    make_run_id,
     poll_tier,
+    select_stations,
 )
 from bahn_pulse.openboards.writer import BatchWriter, to_jsonl
 from bahn_pulse.settings import DbApiCredentials
@@ -223,3 +225,21 @@ def test_to_jsonl_embeds_raw_response_bytes_verbatim() -> None:
 def test_to_jsonl_reserializes_multiline_response() -> None:
     line = to_jsonl([{"response": b'{\n  "a": 1\n}\n'}])
     assert line == b'{"response":{"a":1}}\n'
+
+
+def test_select_stations_shards_cover_tier_exactly_once():
+    policy = POLICIES[3]
+    stations = [Station(8000000 + i, (str(8000000 + i),), 3) for i in range(41)]
+    stations.append(Station(8100000, ("8100000",), 1))  # other tier, never selected
+    shards = [select_stations(stations, policy, k) for k in range(policy.shards)]
+    seen = [s.eva_number for shard in shards for s in shard]
+    assert sorted(seen) == [s.eva_number for s in stations if s.tier == 3]
+    assert select_stations(stations, policy) == [s for s in stations if s.tier == 3]
+    with pytest.raises(ValueError, match="out of range"):
+        select_stations(stations, policy, policy.shards)
+
+
+def test_make_run_id_includes_shard():
+    now = datetime(2026, 11, 24, 17, 5, tzinfo=UTC)
+    assert make_run_id(3, now, 2) == "tier3s2-20261124T170500Z"
+    assert make_run_id(1, now) == "tier1-20261124T170500Z"

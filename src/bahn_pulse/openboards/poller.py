@@ -61,8 +61,21 @@ def group_stations(stations: Sequence[Station], group_size: int) -> list[list[St
     return groups
 
 
-def make_run_id(tier: int, now: datetime) -> str:
-    return f"tier{tier}-{now.astimezone(UTC):%Y%m%dT%H%M%SZ}"
+def make_run_id(tier: int, now: datetime, shard: int | None = None) -> str:
+    part = f"s{shard}" if shard is not None else ""
+    return f"tier{tier}{part}-{now.astimezone(UTC):%Y%m%dT%H%M%SZ}"
+
+
+def select_stations(
+    stations: Iterable[Station], policy: TierPolicy, shard: int | None = None
+) -> list[Station]:
+    """Stations of the policy's tier; only one shard of them if ``shard`` is given."""
+    selected = [s for s in stations if s.tier == policy.tier]
+    if shard is None:
+        return selected
+    if not 0 <= shard < policy.shards:
+        raise ValueError(f"Shard {shard} out of range for tier {policy.tier} ({policy.shards})")
+    return [s for s in selected if s.eva_number % policy.shards == shard]
 
 
 def _iso(ts: datetime) -> str:
@@ -141,12 +154,17 @@ async def poll_tier(
     *,
     now: datetime | None = None,
     run_id: str | None = None,
-    max_in_flight: int = 16,
+    shard: int | None = None,
+    max_in_flight: int = 64,
 ) -> dict[str, int]:
-    """Poll every station of one tier (both boards). Records go to ``sink`` as they arrive."""
+    """Poll every station of one tier, or one shard of it (both boards).
+
+    Records go to ``sink`` as they arrive. ``max_in_flight`` must be high enough that slow
+    responses (grouped requests take ~10 s) do not keep the run below the limiter's rate.
+    """
     now = now or datetime.now(UTC)
-    run_id = run_id or make_run_id(policy.tier, now)
-    groups = group_stations([s for s in stations if s.tier == policy.tier], policy.group_size)
+    run_id = run_id or make_run_id(policy.tier, now, shard)
+    groups = group_stations(select_stations(stations, policy, shard), policy.group_size)
     semaphore = asyncio.Semaphore(max_in_flight)
     stats = {"requests": 0, "errors": 0, "truncated": 0}
 

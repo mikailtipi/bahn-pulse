@@ -2,11 +2,32 @@
 # Build the package first: scripts/build_lambda.sh (writes build/lambda/).
 
 locals {
+  # shards must match TierPolicy.shards in src/bahn_pulse/openboards/policy.py.
+  # A sharded tier gets one schedule per shard; shard k runs at minute shard_minutes[k] each hour,
+  # so every station of the tier is still polled once per hour.
   poller_tiers = {
-    "1" = { schedule = "rate(2 minutes)", rate = 4.5, timeout = 110 }
-    "2" = { schedule = "rate(10 minutes)", rate = 1.5, timeout = 540 }
-    "3" = { schedule = "rate(1 hour)", rate = 2.5, timeout = 890 }
+    "1" = { schedule = "rate(2 minutes)", rate = 4.5, timeout = 110, shards = 1 }
+    "2" = { schedule = "rate(10 minutes)", rate = 1.5, timeout = 540, shards = 1 }
+    "3" = { schedule = null, rate = 2.5, timeout = 840, shards = 4 }
   }
+  shard_minutes = [5, 20, 35, 50]
+
+  poller_schedules = merge(
+    { for tier, t in local.poller_tiers : tier => {
+      tier     = tier
+      schedule = t.schedule
+      input    = { tier = tonumber(tier) }
+    } if t.shards == 1 },
+    { for pair in flatten([
+      for tier, t in local.poller_tiers : [
+        for k in range(t.shards) : { tier = tier, shard = k }
+      ] if t.shards > 1
+      ]) : "${pair.tier}-s${pair.shard}" => {
+      tier     = pair.tier
+      schedule = "cron(${local.shard_minutes[pair.shard]} * * * ? *)"
+      input    = { tier = tonumber(pair.tier), shard = pair.shard }
+    } }
+  )
   # Sum of rates must stay below the OpenBoards limit of 10 requests per second.
   poller_total_rate = sum([for t in local.poller_tiers : t.rate])
 
@@ -112,6 +133,15 @@ resource "aws_lambda_function" "poller" {
   }
 }
 
+# Scheduler invokes asynchronously; Lambda would retry a failed or timed-out run twice by
+# default. A retry only repeats old work and competes for the tier's rate, so turn it off.
+resource "aws_lambda_function_event_invoke_config" "poller" {
+  for_each                     = aws_lambda_function.poller
+  function_name                = each.value.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 300
+}
+
 # --- Schedules --------------------------------------------------------------
 
 data "aws_iam_policy_document" "scheduler_assume" {
@@ -148,20 +178,21 @@ resource "aws_iam_role_policy" "scheduler" {
 }
 
 resource "aws_scheduler_schedule" "poller" {
-  for_each = local.poller_tiers
+  for_each = local.poller_schedules
 
-  name                = "bahn-pulse-openboards-tier${each.key}"
-  schedule_expression = each.value.schedule
-  state               = var.poller_enabled ? "ENABLED" : "DISABLED"
+  name                         = "bahn-pulse-openboards-tier${each.key}"
+  schedule_expression          = each.value.schedule
+  schedule_expression_timezone = "UTC"
+  state                        = var.poller_enabled ? "ENABLED" : "DISABLED"
 
   flexible_time_window {
     mode = "OFF"
   }
 
   target {
-    arn      = aws_lambda_function.poller[each.key].arn
+    arn      = aws_lambda_function.poller[each.value.tier].arn
     role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ tier = tonumber(each.key) })
+    input    = jsonencode(each.value.input)
 
     retry_policy {
       maximum_retry_attempts = 0 # the next scheduled run comes soon anyway
