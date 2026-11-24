@@ -1,0 +1,48 @@
+# Local working notes (not part of the public repo)
+CLAUDE.md
+.claude/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Local data (bronze lives in S3, never in git)
+data/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
