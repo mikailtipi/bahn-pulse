@@ -90,7 +90,7 @@ def test_overrides_and_tiers_csv_round_trip(tmp_path, stations) -> None:
     out = tmp_path / "tiers.csv"
     write_tiers_csv(assign_tiers(stations, overrides), out)
     lines = out.read_text(encoding="utf-8").splitlines()
-    assert lines[0].startswith("eva_number,stada_number,name")
+    assert lines[0].startswith("eva_number,eva_numbers,stada_number,name")
     assert len(lines) == 1 + 8
 
 

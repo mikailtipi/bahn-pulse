@@ -32,7 +32,9 @@ _TIER_BY_FOLDED_SEGMENT = {k.casefold(): v for k, v in TIER_BY_SEGMENT.items()}
 
 @dataclass(frozen=True)
 class StationTier:
-    eva_number: int
+    eva_number: int  # main EVA number of the station
+    # All EVA numbers of the station, "|"-separated (e.g. Frankfurt Hbf + S-Bahn tunnel).
+    eva_numbers: str
     stada_number: int
     name: str
     ifopt: str | None
@@ -95,6 +97,10 @@ def assign_tiers(
         rows.append(
             StationTier(
                 eva_number=eva.number,
+                eva_numbers="|".join(
+                    [str(eva.number)]
+                    + [str(e.number) for e in station.eva_numbers if e.number != eva.number]
+                ),
                 stada_number=station.number,
                 name=station.name,
                 ifopt=station.ifopt,
