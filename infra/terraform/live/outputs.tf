@@ -12,3 +12,8 @@ output "gtfs_function" {
   description = "GTFS loader Lambda function name."
   value       = aws_lambda_function.gtfs.function_name
 }
+
+output "openmeteo_function" {
+  description = "Open-Meteo weather loader Lambda function name."
+  value       = aws_lambda_function.openmeteo.function_name
+}
