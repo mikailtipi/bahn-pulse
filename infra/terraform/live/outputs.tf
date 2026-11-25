@@ -22,3 +22,8 @@ output "dwd_warnings_function" {
   description = "DWD weather warnings loader Lambda function name."
   value       = aws_lambda_function.dwd_warnings.function_name
 }
+
+output "holidays_function" {
+  description = "Holidays loader Lambda function name."
+  value       = aws_lambda_function.holidays.function_name
+}
