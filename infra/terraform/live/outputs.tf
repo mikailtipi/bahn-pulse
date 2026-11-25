@@ -17,3 +17,8 @@ output "openmeteo_function" {
   description = "Open-Meteo weather loader Lambda function name."
   value       = aws_lambda_function.openmeteo.function_name
 }
+
+output "dwd_warnings_function" {
+  description = "DWD weather warnings loader Lambda function name."
+  value       = aws_lambda_function.dwd_warnings.function_name
+}
