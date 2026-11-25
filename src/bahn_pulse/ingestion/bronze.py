@@ -39,14 +39,20 @@ def write_bronze(
     body: bytes,
     metadata: dict[str, str],
     content_type: str = "application/json",
+    *,
+    compress: bool = True,
 ) -> None:
-    """Write one raw payload. Never overwrites: fails if the key already exists."""
+    """Write one raw payload. Never overwrites: fails if the key already exists.
+
+    ``compress=False`` stores the body as is (for payloads that are already compressed, e.g. zip).
+    """
+    extra = {"ContentEncoding": "gzip"} if compress else {}
     s3.put_object(
         Bucket=bucket,
         Key=key,
-        Body=gzip.compress(body),
+        Body=gzip.compress(body) if compress else body,
         ContentType=content_type,
-        ContentEncoding="gzip",
         Metadata=metadata,
         IfNoneMatch="*",
+        **extra,
     )
